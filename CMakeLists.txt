@@ -17,7 +17,7 @@ if(Git_FOUND)
     string(LENGTH "${RESULT_STRING}" LENGTH_RESULT_STRING)
 
     if(${LENGTH_RESULT_STRING} EQUAL 0)
-        
+
         execute_process(
             COMMAND ${GIT_EXECUTABLE} rev-list HEAD --count
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -34,6 +34,8 @@ message("Building for target : ${CMAKE_SYSTEM_NAME}")
 message("PROJECT_VERSION: ${PROJECT_VERSION}${VERSION_STATUS}")
 
 configure_file("${PROJECT_SOURCE_DIR}/version.h.in" "${CMAKE_CURRENT_BINARY_DIR}/version.h")
+
+string(APPEND CMAKE_CXX_FLAGS_DEBUG " -g3 -O0")
 
 if(ANDROID OR EMSCRIPTEN)
     set(BUILD_SOKOL_DEFAULT OFF)
@@ -53,6 +55,19 @@ option(BUILD_LIBRETRO "libretro Enabled" ${BUILD_LIBRETRO_DEFAULT})
 option(BUILD_DEMO_CARTS "Demo Carts Enabled" ${BUILD_DEMO_CARTS_DEFAULT})
 option(BUILD_PRO "Build PRO version" FALSE)
 option(BUILD_PLAYER "Build standalone players" ${BUILD_PLAYER_DEFAULT})
+
+# Ruby
+find_package(Ruby)
+if (Ruby_FOUND)
+	find_program(RAKE_EXECUTABLE "rake")
+	if(RAKE_EXECUTABLE)
+		set(RAKE_EXECUTABLE_FOUND ON)
+	else()
+		set(RAKE_EXECUTABLE_FOUND OFF)
+		message(FATAL_ERROR "MRuby: Could not find rake executable.")
+	endif()
+endif()
+option(BUILD_MRUBY "Ruby scripting support (via MRuby) Enabled" ${RAKE_EXECUTABLE_FOUND})
 
 if (BAREMETALPI)
 
@@ -203,6 +218,35 @@ target_compile_definitions(lua PRIVATE LUA_COMPAT_5_2)
 target_include_directories(lua INTERFACE ${THIRDPARTY_DIR}/lua)
 
 ################################
+# MRUBY
+################################
+
+if(BUILD_MRUBY)
+	include(ExternalProject)
+
+	find_package(BISON REQUIRED)
+
+	set(MRUBY_DIR ${THIRDPARTY_DIR}/mruby)
+	set(MRUBY_LIBRARIES ${MRUBY_DIR}/build/host/lib/libmruby.a)
+	set(MRUBY_CONFIG ${CMAKE_SOURCE_DIR}/tic_mruby_build_config.rb)
+
+	ExternalProject_Add(
+		mruby
+
+		CONFIGURE_COMMAND ""
+		INSTALL_COMMAND ""
+
+		BUILD_COMMAND ${RAKE_EXECUTABLE} MRUBY_CONFIG=${MRUBY_CONFIG}
+		BUILD_BYPRODUCTS ${MRUBY_LIBRARIES}
+
+		SOURCE_DIR ${THIRDPARTY_DIR}/mruby
+		BUILD_IN_SOURCE 1
+	)
+
+	string(APPEND CMAKE_C_FLAGS " -DTIC_BUILD_WITH_MRUBY")
+endif()
+
+################################
 # LPEG
 ################################
 
@@ -313,17 +357,30 @@ set(TIC80CORE_SRC
 
 add_library(tic80core STATIC ${TIC80CORE_SRC})
 
-target_include_directories(tic80core 
-    PRIVATE 
-        ${CMAKE_SOURCE_DIR}/include
-        ${THIRDPARTY_DIR}/blip-buf
-        ${THIRDPARTY_DIR}/duktape/src
-        ${THIRDPARTY_DIR}/wren/src/include
-        ${THIRDPARTY_DIR}/squirrel/include
-        ${THIRDPARTY_DIR}/moonscript
-        ${THIRDPARTY_DIR}/fennel
-    PUBLIC 
-        ${CMAKE_CURRENT_BINARY_DIR})
+if(BUILD_MRUBY)
+	add_dependencies(tic80core mruby)
+
+	target_include_directories(tic80core
+		PRIVATE
+			${THIRDPARTY_DIR}/mruby/include)
+
+	target_link_libraries(tic80core ${MRUBY_LIBRARIES})
+	if(WIN32)
+		target_link_libraries(tic80core Ws2_32.lib)
+	endif()
+endif()
+
+target_include_directories(tic80core
+	PRIVATE
+		${CMAKE_SOURCE_DIR}/include
+		${THIRDPARTY_DIR}/blip-buf
+		${THIRDPARTY_DIR}/duktape/src
+		${THIRDPARTY_DIR}/wren/src/include
+		${THIRDPARTY_DIR}/squirrel/include
+		${THIRDPARTY_DIR}/moonscript
+		${THIRDPARTY_DIR}/fennel
+	PUBLIC
+		${CMAKE_CURRENT_BINARY_DIR})
 
 target_link_libraries(tic80core lua lpeg wren squirrel giflib)
 
