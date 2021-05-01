@@ -251,6 +251,38 @@ target_include_directories(squirrel PRIVATE ${SQUIRREL_DIR}/squirrel)
 target_include_directories(squirrel PRIVATE ${SQUIRREL_DIR}/sqstdlib)
 
 ################################
+# MICROPYTHON
+################################
+
+set(MICROPYTHON_DIR ${THIRDPARTY_DIR}/micropython)
+
+# cd vendor/micropython/mpy-cross
+# make
+execute_process(COMMAND make
+                WORKING_DIRECTORY ${MICROPYTHON_DIR}/mpy-cross
+)
+#add_custom_command(OUTPUT ${MICROPYTHON_DIR}/mpy-cross/mpy-cross
+#                   COMMAND make
+#                   WORKING_DIRECTORY ${MICROPYTHON_DIR}/mpy-cross
+#)
+
+# cd examples/embedding
+# make
+execute_process(COMMAND make
+                WORKING_DIRECTORY ${MICROPYTHON_DIR}/examples/embedding
+)
+#add_custom_command(OUTPUT ${MICROPYTHON_DIR}/examples/embedding/libmicropython.a
+#                   COMMAND make
+#                   WORKING_DIRECTORY ${MICROPYTHON_DIR}/examples/embedding
+#                   DEPENDS ${MICROPYTHON_DIR}/mpy-cross/mpy-cross
+#)
+
+add_library(micropython STATIC IMPORTED)
+set_target_properties(micropython PROPERTIES
+    IMPORTED_LOCATION ${MICROPYTHON_DIR}/examples/embedding/libmicropython.a
+)
+
+################################
 # GIFLIB
 ################################
 
@@ -297,6 +329,7 @@ set(TIC80CORE_SRC
     ${TIC80CORE_DIR}/api/lua.c 
     ${TIC80CORE_DIR}/api/wren.c 
     ${TIC80CORE_DIR}/api/squirrel.c
+    ${TIC80CORE_DIR}/api/micropython.c
     ${TIC80CORE_DIR}/tic.c
     ${TIC80CORE_DIR}/cart.c
     ${TIC80CORE_DIR}/tools.c 
@@ -313,11 +346,14 @@ target_include_directories(tic80core
     PRIVATE 
         ${THIRDPARTY_DIR}/moonscript
         ${THIRDPARTY_DIR}/fennel
+        ${MICROPYTHON_DIR}
+        ${MICROPYTHON_DIR}/examples/embedding
+        ${MICROPYTHON_DIR}/examples/embedding/build
     PUBLIC
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src)
 
-target_link_libraries(tic80core lua lpeg wren squirrel blipbuf duktape zlib)
+target_link_libraries(tic80core lua lpeg wren squirrel blipbuf duktape micropython zlib)
 
 if(BUILD_DEPRECATED)
     target_compile_definitions(tic80core PRIVATE DEPRECATED_CHUNKS)
@@ -454,7 +490,7 @@ if(BUILD_LIBRETRO)
         set_target_properties(tic80_libretro PROPERTIES SUFFIX "_partial.a")
         add_custom_command(TARGET tic80_libretro
                POST_BUILD
-                   COMMAND ${CMAKE_SOURCE_DIR}/build/libretro/merge_static.sh $(AR) ${CMAKE_BINARY_DIR}/lib/tic80_libretro${LIBRETRO_SUFFIX}.a ${CMAKE_BINARY_DIR}/lib/tic80_libretro_partial.a ${CMAKE_BINARY_DIR}/lib/libtic80core.a ${CMAKE_BINARY_DIR}/lib/liblua.a ${CMAKE_BINARY_DIR}/lib/libblipbuf.a ${CMAKE_BINARY_DIR}/lib/libduktape.a ${CMAKE_BINARY_DIR}/lib/libwren.a ${CMAKE_BINARY_DIR}/lib/libsquirrel.a ${CMAKE_BINARY_DIR}/lib/libgiflib.a ${CMAKE_BINARY_DIR}/lib/liblpeg.a)
+                   COMMAND ${CMAKE_SOURCE_DIR}/build/libretro/merge_static.sh $(AR) ${CMAKE_BINARY_DIR}/lib/tic80_libretro${LIBRETRO_SUFFIX}.a ${CMAKE_BINARY_DIR}/lib/tic80_libretro_partial.a ${CMAKE_BINARY_DIR}/lib/libtic80core.a ${CMAKE_BINARY_DIR}/lib/liblua.a ${CMAKE_BINARY_DIR}/lib/libblipbuf.a ${CMAKE_BINARY_DIR}/lib/libduktape.a ${CMAKE_BINARY_DIR}/lib/libwren.a ${CMAKE_BINARY_DIR}/lib/libsquirrel.a ${CMAKE_BINARY_DIR}/lib/libmicropython.a ${CMAKE_BINARY_DIR}/lib/libgiflib.a ${CMAKE_BINARY_DIR}/lib/liblpeg.a)
     else()
         add_library(tic80_libretro SHARED
         ${LIBRETRO_SRC}
